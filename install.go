@@ -43,9 +43,11 @@ func InstallFont(fontPath string) (err error) {
 		return fmt.Errorf("unhandled URL scheme: %v", u.Scheme)
 	}
 
+	/*
 	if isZipFile(b) {
 		return installFromZIP(b)
 	}
+	 */
 
 	fontData, err = NewFontData(path.Base(u.Path), b)
 	if err != nil {

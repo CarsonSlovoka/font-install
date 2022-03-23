@@ -2,53 +2,126 @@ package main
 
 import (
 	"fmt"
-	"io/ioutil"
-	"os"
-	"path"
-
-	log "github.com/Crosse/gosimplelogger"
 	"golang.org/x/sys/windows/registry"
+	"io/ioutil"
+	"log"
+	"path"
+	"path/filepath"
+	"syscall"
+	"unsafe"
 )
 
+func registerFont(rootKey registry.Key, name, value string) error {
+	key, err := registry.OpenKey(rootKey, `SOFTWARE\Microsoft\Windows NT\CurrentVersion\Fonts`, registry.WRITE)
+	if err != nil {
+		return err
+	}
+	defer key.Close()
+
+	if err = key.SetStringValue(
+		fmt.Sprintf("%v (TrueType)", name), // it's "ok" to mark an OpenType font as "TrueType"
+		value,
+	); err != nil {
+		return err
+	}
+	return nil
+}
+
+func LPCWSTR(str string) uintptr {
+	lpcwstr, err := syscall.UTF16PtrFromString(str)
+	if err != nil {
+		panic(err)
+	}
+	return uintptr(unsafe.Pointer(lpcwstr))
+}
+
+const (
+	HWND_BROADCAST = 0xffff
+)
+
+const (
+	// https://pub.dev/documentation/win32/latest/win32/WM_FONTCHANGE-constant.html
+	WM_FONTCHANGE = 0x001D
+)
+
+func installOnHKCU(fontData *FontData) (err error) {
+	// Reg
+	userFontPath := filepath.Join(UserFontsDir, fontData.FileName)
+	if err = registerFont(registry.CURRENT_USER, fontData.Name, userFontPath); err != nil {
+		return err
+	}
+
+	// File
+	err = ioutil.WriteFile(userFontPath, fontData.Data, 0644)
+	if err != nil {
+		return err
+	}
+	log.Printf("Installing \"%v\" to %v", fontData.Name, userFontPath)
+
+	// tell system font change
+	var gdi32dll = syscall.NewLazyDLL("Gdi32.dll")
+	var procAddFontResource = gdi32dll.NewProc("AddFontResourceW")
+
+	// user32dll := syscall.NewLazyDLL("user32.dll")
+	// procSendMessage := user32dll.NewProc("SendMessageW")
+
+	_, _, err = procAddFontResource.Call(LPCWSTR(userFontPath))
+	if err != nil {
+		return err
+	}
+
+	/*
+		_, _, err = procSendMessage.Call(HWND_BROADCAST, WM_FONTCHANGE, 0, 0)
+		if err != nil {
+			return err
+		}
+	*/
+
+	return nil
+}
+
+func installOnHKLM(fontData *FontData) (err error) {
+	if err = registerFont(registry.LOCAL_MACHINE, fontData.Name, fontData.FileName); err != nil { // 如果是安裝在local machine只要寫檔名即可，他會認定已經存在在FontsDir的路徑之中
+		return err
+	}
+	sysFontPath := path.Join(FontsDir, fontData.FileName)
+	err = ioutil.WriteFile(sysFontPath, fontData.Data, 0644)
+	if err != nil {
+		return err
+	}
+	log.Printf("Installing \"%v\" to %v", fontData.Name, sysFontPath)
+
+	var gdi32dll = syscall.NewLazyDLL("Gdi32.dll")
+	var procAddFontResource = gdi32dll.NewProc("AddFontResourceW")
+
+	// user32dll := syscall.NewLazyDLL("user32.dll")
+	// procSendMessage := user32dll.NewProc("SendMessageW")
+
+	_, _, err = procAddFontResource.Call(LPCWSTR(sysFontPath))
+
+	if err != syscall.Errno(0x0) {
+		return err
+	}
+
+	/*
+		_, _, err = procSendMessage.Call(HWND_BROADCAST, WM_FONTCHANGE, 0, 0)
+		if err != syscall.Errno(0x0) {
+			return err
+		}
+	*/
+	return nil
+}
+
 func platformDependentInstall(fontData *FontData) (err error) {
-	// To install a font on Windows:
-	//  - Copy the file to the fonts directory
-	//  - Create a registry entry for the font
-	fullPath := path.Join(FontsDir, fontData.FileName)
-	log.Debugf("Installing \"%v\" to %v", fontData.Name, fullPath)
+	/*
+		To install a font on Windows:
+		1. Create a registry entry for the font
+		2. Copy the file to the fonts directory
+		3. Call Gdi32.dll.AddFontResource
+		4. Call user32.dll.SendMessage
+	*/
 
-	err = ioutil.WriteFile(fullPath, fontData.Data, 0644) //nolint:gosec
-	if err != nil {
-		return err
-	}
-
-	// Second, write metadata about the font to the registry.
-	k, err := registry.OpenKey(registry.LOCAL_MACHINE, `SOFTWARE\Microsoft\Windows NT\CurrentVersion\Fonts`, registry.WRITE)
-	if err != nil {
-		// If this fails, remove the font file as well.
-		log.Error(err)
-
-		if nexterr := os.Remove(fullPath); nexterr != nil {
-			return nexterr
-		}
-
-		return err
-	}
-	defer k.Close()
-
-	// Apparently it's "ok" to mark an OpenType font as "TrueType",
-	// and since this tool only supports True- and OpenType fonts,
-	// this should be Okay(tm).
-	// Besides, Windows does it, so why can't I?
-	valueName := fmt.Sprintf("%v (TrueType)", fontData.FileName)
-	if err = k.SetStringValue(fontData.Name, valueName); err != nil {
-		// If this fails, remove the font file as well.
-		log.Error(err)
-
-		if nexterr := os.Remove(fullPath); nexterr != nil {
-			return nexterr
-		}
-
+	if err = installOnHKLM(fontData); err != nil {
 		return err
 	}
 
