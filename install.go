@@ -48,7 +48,7 @@ func InstallFont(fontPath string) (err error) {
 
 	fontData, err = NewFontData(path.Base(u.Path), b)
 	if err != nil {
-		return err
+		return fmt.Errorf("NewFontData error: \n%s", err)
 	}
 
 	return install(fontData)

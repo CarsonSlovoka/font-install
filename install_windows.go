@@ -97,10 +97,10 @@ func installOnHKLM(fontData *FontData) (err error) {
 	// user32dll := syscall.NewLazyDLL("user32.dll")
 	// procSendMessage := user32dll.NewProc("SendMessageW")
 
-	_, _, err = procAddFontResource.Call(LPCWSTR(sysFontPath))
+	rtnValue, _, _ := procAddFontResource.Call(LPCWSTR(sysFontPath))
 
-	if err != syscall.Errno(0x0) {
-		return err
+	if rtnValue == 0 {
+		return fmt.Errorf("AddFontResourceW error: \n%s", err)
 	}
 
 	/*
