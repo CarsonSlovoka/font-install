@@ -1,17 +1,16 @@
 package main
 
 import (
-	"archive/zip"
 	"bytes"
 	"fmt"
+	log "github.com/Crosse/gosimplelogger"
+	"github.com/yeka/zip" // archive/zip
 	"io/ioutil"
 	"net/http"
 	"net/url"
 	"path"
 	"runtime"
 	"strings"
-
-	log "github.com/Crosse/gosimplelogger"
 )
 
 var installedFonts = 0
@@ -43,11 +42,9 @@ func InstallFont(fontPath string) (err error) {
 		return fmt.Errorf("unhandled URL scheme: %v", u.Scheme)
 	}
 
-	/*
 	if isZipFile(b) {
 		return installFromZIP(b)
 	}
-	 */
 
 	fontData, err = NewFontData(path.Base(u.Path), b)
 	if err != nil {
@@ -97,6 +94,9 @@ func getLocalFile(filename string) (data []byte, err error) {
 }
 
 func installFromZIP(data []byte) (err error) {
+	// https://learnku.com/articles/23434/golang-learning-notes-five-archivezip-to-achieve-compression-and-decompression
+	// https://stackoverflow.com/a/52705890/9935654
+
 	bytesReader := bytes.NewReader(data)
 
 	zipReader, err := zip.NewReader(bytesReader, int64(bytesReader.Len()))
@@ -109,6 +109,10 @@ func installFromZIP(data []byte) (err error) {
 	log.Debug("Scanning ZIP file for fonts")
 
 	for _, zf := range zipReader.File {
+		if zf.IsEncrypted() {
+			zf.SetPassword(config.password)
+		}
+
 		rc, err := zf.Open()
 		if err != nil {
 			return err
@@ -120,7 +124,7 @@ func installFromZIP(data []byte) (err error) {
 			return err
 		}
 
-		fontData, err := NewFontData(zf.Name, data)
+		fontData, err := NewFontData(zf.FileHeader.Name, data)
 		if err != nil {
 			log.Errorf(`Skipping non-font file "%s"`, zf.Name)
 			continue

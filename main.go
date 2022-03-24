@@ -8,12 +8,19 @@ import (
 	"regexp"
 )
 
+type Config struct {
+	password string
+}
+
+var config Config
+
 func main() {
 	var (
 		fonts    []string
 		filename = flag.String("fromFile", "", "text file containing fonts to install")
 		debug    = flag.Bool("debug", false, "Enable debug logging")
 		dryrun   = flag.Bool("dry-run", false, "Don't actually download or install anything")
+		psw      = flag.String("psw", "", "The password which used for zip file.")
 	)
 
 	flag.Parse()
@@ -22,6 +29,8 @@ func main() {
 		flag.Usage()
 		os.Exit(1)
 	}
+
+	config.password = *psw
 
 	if *debug {
 		log.LogLevel = log.LogDebug

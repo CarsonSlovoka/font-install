@@ -25,6 +25,7 @@
 ```
 go build -o test.exe
 test.exe -fromFile="install-font.lst"
+test.exe -fromFile="install-font.lst" -psw="12345678"
 ```
 
 其中: `install-font.lst` 放置所有您想要安裝字體的路徑 (可以是相對路徑或絕對路徑)
