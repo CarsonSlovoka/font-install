@@ -36,7 +36,7 @@ func LPCWSTR(str string) uintptr {
 }
 
 const (
-	HWND_BROADCAST = 0xffff
+	HWND_BROADCAST = uintptr(0xFFFF) // https://github.com/lxn/win/blob/7a0e89e/user32.go#L289
 )
 
 const (
@@ -94,21 +94,21 @@ func installOnHKLM(fontData *FontData) (err error) {
 	var gdi32dll = syscall.NewLazyDLL("Gdi32.dll")
 	var procAddFontResource = gdi32dll.NewProc("AddFontResourceW")
 
-	// user32dll := syscall.NewLazyDLL("user32.dll")
-	// procSendMessage := user32dll.NewProc("SendMessageW")
-
 	rtnValue, _, _ := procAddFontResource.Call(LPCWSTR(sysFontPath))
 
 	if rtnValue == 0 {
 		return fmt.Errorf("AddFontResourceW error: \n%s", err)
 	}
 
-	/*
-		_, _, err = procSendMessage.Call(HWND_BROADCAST, WM_FONTCHANGE, 0, 0)
-		if err != syscall.Errno(0x0) {
-			return err
-		}
-	*/
+	user32dll := syscall.NewLazyDLL("user32.dll")
+	// procSendMessage := user32dll.NewProc("SendMessageW") // 這個會等待所有程式都回應，所以你會覺得程式好像掛掉了都不動 // https://social.msdn.microsoft.com/Forums/en-US/6900f74f-6ece-47da-88fc-f9c8bcd40206/sendmessage-api-slow?forum=wpf
+	// 也可以考慮 SendMessageTimeout(HWND_BROADCAST, WM_FONTCHANGE, 0, 0, SMTO_ABORTIFHUNG, 500) // https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-sendmessagetimeouta
+	procPostMessage := user32dll.NewProc("PostMessageW")
+	_, _, err = procPostMessage.Call(HWND_BROADCAST, WM_FONTCHANGE, 0, 0)
+	if err != syscall.Errno(0x0) {
+		return err
+	}
+
 	return nil
 }
 
@@ -118,7 +118,7 @@ func platformDependentInstall(fontData *FontData) (err error) {
 		1. Create a registry entry for the font
 		2. Copy the file to the fonts directory
 		3. Call Gdi32.dll.AddFontResource
-		4. Call user32.dll.SendMessage
+		4. Call user32.dll.PostMessage
 	*/
 
 	if err = installOnHKLM(fontData); err != nil {
